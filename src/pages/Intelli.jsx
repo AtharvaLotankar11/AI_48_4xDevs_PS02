@@ -7,10 +7,12 @@ import {
   Maximize2,
   Minimize2,
   BarChart2,
+  Loader2,
 } from "lucide-react";
 import { Analytics } from "../components/Analytics";
 import { ChatMessage } from "../components/ChatMessage";
 import { cn } from "../lib/utils";
+import { sendMessageToGroq } from "../services/groqService";
 
 export default function Intelli() {
   const [messages, setMessages] = useState([]);
@@ -18,37 +20,12 @@ export default function Intelli() {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const getStaticResponse = (userInput) => {
-    const lowerInput = userInput.toLowerCase();
-    
-    const responses = {
-      hello: "Hello! How can I assist you today?",
-      help: "Here are some things I can help with: \n1. Account issues \n2. Technical support \n3. General questions",
-      features: "Our platform offers: \n- Real-time analytics \n- AI-powered insights \n- Custom reporting",
-      goodbye: "Goodbye! Feel free to reach out again if you need more help.",
-      default: "I'm here to help! Could you please clarify your question?"
-    };
-
-    switch(true) {
-      case lowerInput.includes('hello'):
-        return responses.hello;
-      case lowerInput.includes('help'):
-        return responses.help;
-      case lowerInput.includes('feature'):
-        return responses.features;
-      case lowerInput.includes('goodbye'):
-        return responses.goodbye;
-      default:
-        return responses.default;
-    }
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
-    // Add user message
     const userMessage = {
       id: Date.now(),
       content: input,
@@ -56,16 +33,34 @@ export default function Intelli() {
       timestamp: new Date(),
     };
 
-    // Generate static response
-    const botResponse = {
-      id: Date.now() + 1,
-      content: getStaticResponse(input),
-      role: "assistant",
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage, botResponse]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
+
+    try {
+      const conversationHistory = [...messages, userMessage];
+      const aiResponse = await sendMessageToGroq(conversationHistory);
+
+      const botResponse = {
+        id: Date.now() + 1,
+        content: aiResponse,
+        role: "assistant",
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, botResponse]);
+    } catch (error) {
+      const errorMessage = {
+        id: Date.now() + 1,
+        content:
+          "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+        role: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -84,7 +79,9 @@ export default function Intelli() {
           <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 p-4">
             <div className="flex items-center gap-2">
               <Bot className="h-6 w-6 text-white" />
-              <h2 className="text-lg font-semibold text-white">IntelliSupport</h2>
+              <h2 className="text-lg font-semibold text-white">
+                IntelliSupport
+              </h2>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -115,7 +112,12 @@ export default function Intelli() {
           {/* Main Content */}
           <div className="flex h-[70vh] max-h-[600px] flex-col md:flex-row">
             {/* Chat Section */}
-            <div className={cn("flex flex-1 flex-col", showAnalytics && "md:w-1/2")}>
+            <div
+              className={cn(
+                "flex flex-1 flex-col",
+                showAnalytics && "md:w-1/2"
+              )}
+            >
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="space-y-4">
                   {messages.map((message) => (
@@ -132,13 +134,19 @@ export default function Intelli() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Type your message..."
-                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    disabled={isLoading}
+                    className="flex-1 rounded-lg border border-gray-200 px-4 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                    disabled={isLoading}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                   >
-                    <Send className="h-5 w-5" />
+                    {isLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5" />
+                    )}
                   </button>
                 </div>
               </form>
